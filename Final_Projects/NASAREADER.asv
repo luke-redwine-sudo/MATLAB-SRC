@@ -1,0 +1,3 @@
+ncdisp("VPN1.nc")
+
+h5read("C:\Users\redwi\Documents\Final_ProjectsVNC.nc", "/observation_data/I04")

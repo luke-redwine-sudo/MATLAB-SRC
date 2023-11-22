@@ -1,0 +1,24 @@
+% Load the image dataset
+load Sentinel2-data.mat;
+
+image_data_structure = struct2cell(load("Sentinel2-data.mat"));
+
+% Initialize dimensions
+rows = 521;
+columns = 508;
+numSlices = 13;
+
+image_data = struct('data', zeros(rows, columns, numSlices));
+
+% Extract image slices from the loaded structure
+for slice = 1 : 12
+    imshow(magic(uint8(image_data_structure{slice, 1}))(0:rows, 0:columns));
+end
+
+
+
+% Extract image slices from the loaded structure
+for slice = 1 : numSlices
+    slice_name = sprintf('B%d', slice); % Assuming slices are named 'slice1', 'slice2', ...
+    var = image_data_structure{slice, 1}(rows, columns, numSlices)
+end
