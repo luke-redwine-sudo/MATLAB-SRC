@@ -1,4 +1,5 @@
 close all
+clear all
 
 % Load the image dataset
 load pan_IKONOS.mat;
@@ -53,15 +54,17 @@ R = rescale(multispectral_images{1, 1}(:,:,3));
 G = rescale(multispectral_images{1, 1}(:,:,2));
 B = rescale(multispectral_images{1, 1}(:,:,1));
 
-NDVI = normalize(((NIR) - (R)) ./ ((NIR) + (R)));
+NDVI = ((NIR) - (R)) ./ ((NIR) + (R));
 
 NIR_P = rescale(pansharpened_components(:,:,4));
 R_P = rescale(pansharpened_components(:,:,3));
 G_P = rescale(pansharpened_components(:,:,2));
 B_P = rescale(panchromatic_image);
 
-NDVI_P = (NIR_P - R_P) ./ (NIR_P + R_P);
+NDVI_P = max((NIR_P - R_P) ./ (NIR_P + R_P), 0);
 
+original_image = im2gray(uint8(rescale(cat(3, R, G, B), 0, 255)));
+pca_pansharpened_image = im2gray(uint8(rescale(cat(3, R_P, B_P, G_P), 0, 255)));
 
 figure;
 subplot(2, 4, 1);
@@ -91,18 +94,18 @@ title(['NIR']);
 
 figure;
 subplot(1, 3, 1);
-imshow(uint8(rescale(cat(3, R, G, B), 0, 255)));
+imshow(original_image, []);
 title(['Multispectral Color Image']);
 subplot(1, 3, 2);
 imshow(panchromatic_image, []);
 title(['Panchromatic Image']);
 subplot(1, 3, 3);
-imshow((uint8(rescale(cat(3, R_P, B_P, G_P), 0, 255))));
+imshow(pca_pansharpened_image, []);
 title(['PCA Pansharpened Image']);
 
 figure;
 subplot(1, 2, 1);
-imshow(cat(3, NDVI, zeros(m, n), zeros(m,n)), []);
+imshow(cat(3, NDVI, zeros(m, n), zeros(m,n)));
 title(['NDVI Before Pansharpening'])
 subplot(1, 2, 2);
 imshow(cat(3, NDVI_P, zeros(m, n), zeros(m,n)));
@@ -118,7 +121,7 @@ fused_band1 = (multispectral_bands(:,:,1).*panchromatic_image)./denominator;
 fused_band2 = (multispectral_bands(:,:,2).*panchromatic_image)./denominator;
 fused_band3 = (multispectral_bands(:,:,3).*panchromatic_image)./denominator;
 
-fused_image = uint8(rescale(cat(3, fused_band1, fused_band2, fused_band3), 0, 255));
+fused_image = im2gray(uint8(rescale(cat(3, fused_band1, fused_band2, fused_band3), 0, 255)));
 figure;
 imshow(fused_image);
 title(['Brovey Method Pansharpened Image'])
