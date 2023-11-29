@@ -25,8 +25,6 @@ centered_multispectral = multispectral_matrix - repmat(mean_multispectral, 1, 1,
 % Reshape the centered_multispectral to a 2D matrix for PCA
 reshaped_multispectral = reshape(centered_multispectral, [], size(centered_multispectral, 3));
 
-%panchromatic_image = upsample_ms(panchromatic_image);
-
 reshaped_multispectral(:, 1) = reshape(panchromatic_image, m*n, 1);
 
 % Compute the covariance matrix using X^T*X
@@ -47,7 +45,6 @@ top_pcs_multispectral = eigenvectors_multispectral(:, 1:num_components);
 
 % Pansharpening using the top principal components
 pansharpened_components = reshape(reshaped_multispectral * top_pcs_multispectral, m, n, num_components);
-pansharpened_image = sum(pansharpened_components, 4) + panchromatic_image;
 
 NIR = rescale(multispectral_images{1, 1}(:,:,4));
 R = rescale(multispectral_images{1, 1}(:,:,3));
@@ -59,7 +56,7 @@ NDVI = ((NIR) - (R)) ./ ((NIR) + (R));
 NIR_P = rescale(pansharpened_components(:,:,4));
 R_P = rescale(pansharpened_components(:,:,3));
 G_P = rescale(pansharpened_components(:,:,2));
-B_P = rescale(panchromatic_image);
+B_P = rescale(pansharpened_components(:,:,1));
 
 NDVI_P = max((NIR_P - R_P) ./ (NIR_P + R_P), 0);
 
@@ -89,39 +86,49 @@ subplot(2, 4, 7);
 imshow(cat(3, zeros(m, n), zeros(m, n), B_P));
 title(['Blue']);
 subplot(2, 4, 8);
-imshow(cat(3, NIR_P, zeros(m, n), zeros(m, n)));
+imshow(cat(3, NIR_P, zeros(m, n), NIR_P));
 title(['NIR']);
-
-figure;
-subplot(1, 3, 1);
-imshow(original_image, []);
-title(['Multispectral Color Image']);
-subplot(1, 3, 2);
-imshow(panchromatic_image, []);
-title(['Panchromatic Image']);
-subplot(1, 3, 3);
-imshow(pca_pansharpened_image, []);
-title(['PCA Pansharpened Image']);
-
-figure;
-subplot(1, 2, 1);
-imshow(cat(3, NDVI, zeros(m, n), zeros(m,n)));
-title(['NDVI Before Pansharpening'])
-subplot(1, 2, 2);
-imshow(cat(3, NDVI_P, zeros(m, n), zeros(m,n)));
-title(['NDVI After Pansharpening']);
 
 
 % -------------------------------------------------------------------------
 
 multispectral_bands = multispectral_images{1,1};
-denominator = multispectral_bands(:,:,1) + multispectral_bands(:,:,2) + multispectral_bands(:,:,3);
+denominator = multispectral_bands(:,:,1) + multispectral_bands(:,:,2) + multispectral_bands(:,:,3) + multispectral_bands(:,:,4);
 
 fused_band1 = (multispectral_bands(:,:,1).*panchromatic_image)./denominator;
 fused_band2 = (multispectral_bands(:,:,2).*panchromatic_image)./denominator;
 fused_band3 = (multispectral_bands(:,:,3).*panchromatic_image)./denominator;
+fused_band4 = (multispectral_bands(:,:,4).*panchromatic_image)./denominator;
 
 fused_image = im2gray(uint8(rescale(cat(3, fused_band1, fused_band2, fused_band3), 0, 255)));
+
+brovey_NDVI = ((fused_band4) - (fused_band3)) ./ ((fused_band4) + (fused_band3));
+
+% -------------------------------------------------------------------------
+
 figure;
+subplot(1, 4, 1);
+imshow(original_image, []);
+title(['Multispectral Color Image']);
+subplot(1, 4, 2);
+imshow(panchromatic_image, []);
+title(['Panchromatic Image']);
+subplot(1, 4, 3);
+imshow(pca_pansharpened_image, []);
+title(['PCA Pansharpened Image']);
+subplot(1, 4, 4);
 imshow(fused_image);
-title(['Brovey Method Pansharpened Image'])
+title(['Brovey Method Pansharpened Image']);
+
+
+figure;
+subplot(1, 3, 1);
+imshow(NDVI);
+title(['NDVI Before Pansharpening'])
+subplot(1, 3, 2);
+imshow(NDVI_P);
+title(['NDVI After Pansharpening']);
+subplot(1, 3, 3);
+imshow(brovey_NDVI);
+title(['Brovey Method NDVI Image'])
+
