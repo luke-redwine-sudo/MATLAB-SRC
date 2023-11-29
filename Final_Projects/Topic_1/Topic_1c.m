@@ -1,24 +1,12 @@
 close all
 
 % Load the image dataset
-%load Sentinel2-data.mat;
-
-%Sentinel2_data = struct2cell(load("Sentinel2-data.mat"));
-
-numSlices = 5;
-
-chosenImage = 5;
-
-% Load the image dataset
 load pan_IKONOS.mat;
 
 pan_IKONOS = struct2cell(load("pan_IKONOS.mat"));
 
 % Combine the multispectral and panchromatic data
 ms_data = struct2cell(load("ms_IKONOS.mat"));
-
-%ms_data = ms_data{1, 1}; % Assuming that the multispectral data is stored in a field named 'data'
-pan_data = load("pan_IKONOS.mat"); % Assuming that the panchromatic data is stored in a field named 'data'
 
 panchromatic_image = pan_IKONOS{1, 1};
 
@@ -82,7 +70,7 @@ subplot(1, 3, 2);
 imshow(panchromatic_image, []);
 title(['Panchromatic Image']);
 subplot(1, 3, 3);
-imshow(cat(3, B_P, G_P, R_P), []);
+imshow(cat(3, R_P, G_P, B_P), []);
 title(['PCA Pansharpened Image']);
 
 figure;
@@ -103,7 +91,7 @@ fused_band1 = (multispectral_bands(:,:,1).*panchromatic_image)./denominator;
 fused_band2 = (multispectral_bands(:,:,2).*panchromatic_image)./denominator;
 fused_band3 = (multispectral_bands(:,:,3).*panchromatic_image)./denominator;
 
-fused_image = cat(3, fused_band1, fused_band2, fused_band3)/255;
+fused_image = cat(3, fused_band1, fused_band2, fused_band3)/510;
 figure;
 imshow(fused_image);
 title(['Brovey Method Pansharpened Image'])
