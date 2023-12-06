@@ -1,71 +1,213 @@
+close all
+clear all
+
 % Load the image dataset
-load Sentinel2-data.mat;
+load pan_IKONOS.mat;
 
-image_data_structure = struct2cell(load("Sentinel2-data.mat"));
+pan_IKONOS = struct2cell(load("pan_IKONOS.mat"));
 
-% Initialize dimensions
-rows = 521;
-columns = 508;
-numSlices = 13;
+% Combine the multispectral and panchromatic data
+ms_data = struct2cell(load("ms_IKONOS.mat"));
 
-image_list = cell(1, numSlices);
+panchromatic_image = pan_IKONOS{1, 1};
 
-% Extract image slices from the loaded structure and resize to a common size
-common_size = [rows, columns];
-for slice = 1 : numSlices
-    image = double(image_data_structure{slice, 1});
-    resized_image = imresize(image, common_size);
-    image_list{slice} = resized_image;
-end
+% Resize multispectral images to match panchromatic image size
+[m, n] = size(panchromatic_image);
+multispectral_images = cellfun(@(x) imresize(x, [m, n]), ms_data, 'UniformOutput', false);
 
-% Reshape the resized images into column vectors
-image_matrix = reshape(cell2mat(image_list), [], numSlices);
+% Combine multispectral images into a single matrix
+multispectral_matrix = cell2mat(reshape(multispectral_images, 1, 1, []));
 
-% Subtract the mean from each dimension
-mean_image = mean(image_matrix, 2);
-image_matrix_centered = image_matrix - mean_image;
+% Perform PCA on the multispectral images
+mean_multispectral = mean(multispectral_matrix, 3);
+centered_multispectral = multispectral_matrix - repmat(mean_multispectral, 1, 1, size(multispectral_matrix, 3));
+
+% Reshape the centered_multispectral to a 2D matrix for PCA
+reshaped_multispectral = reshape(centered_multispectral, [], size(centered_multispectral, 3));
 
 % Compute the covariance matrix using X^T*X
-covariance_matrix = (image_matrix_centered' * image_matrix_centered) / (numSlices - 1);
+covariance_matrix_multispectral = (reshaped_multispectral' * reshaped_multispectral) / (size(reshaped_multispectral, 1));
 
-% Compute the eigenvectors and eigenvalues
-[eigenvectors, eigenvalues] = eig(covariance_matrix);
+% Perform PCA on the covariance matrix
+[eigenvectors_multispectral, eigenvalues_multispectral] = eig(covariance_matrix_multispectral);
 
 % Sort eigenvectors based on eigenvalues in descending order
-[eigenvalues, sorted_indices] = sort(diag(eigenvalues), 'descend');
-eigenvectors = eigenvectors(:, sorted_indices);
+[eigenvalues_multispectral, sorted_indices_multispectral] = sort(diag(eigenvalues_multispectral), 'descend');
+eigenvectors_multispectral = eigenvectors_multispectral(:, sorted_indices_multispectral);
 
-% Number of principal components to keep (you can adjust this)
-num_components = 3;
+% Number of principal components to keep
+num_components = 4;
 
-% Use the first 'num_components' principal components
-top_pcs = eigenvectors(:, 1:num_components);
+% Use the first 'num_components' principal components for pansharpening
+top_pcs_multispectral = eigenvectors_multispectral(:, 1:num_components);
 
-% Transform the top principal components back into images
-reconstructed_images = (image_matrix_centered * top_pcs) * top_pcs' + mean_image;
+% Replace the top component of the multispectral image to be put through
+% inverse PCA
+reshaped_multispectral(:, 4) = reshape(panchromatic_image, m*n, 1);
 
-% Display the reconstructed images in separate figures
-for slice = 1 : num_components
-    figure;
-    subplot(1, 2, 1);
-    imshow(reshape(image_matrix(:, slice), [rows, columns]), []);
-    title(['Original Image ' num2str(slice)]);
-    
-    subplot(1, 2, 2);
-    imshow(reshape(reconstructed_images(:, slice), [rows, columns]), []);
-    title(['Reconstructed Image ' num2str(slice) ' - Top ' num2str(num_components) ' PCs']);
+% Pansharpening using the top principal components
+pansharpened_components = reshape(reshaped_multispectral * top_pcs_multispectral, m, n, num_components) + mean_multispectral;
+
+% Rescale the original images
+NIR = rescale(multispectral_images{1, 1}(:,:,4));
+R = rescale(multispectral_images{1, 1}(:,:,3));
+G = rescale(multispectral_images{1, 1}(:,:,2));
+B = rescale(multispectral_images{1, 1}(:,:,1));
+
+% Calculate the NDVI for the original image
+NDVI = ((NIR) - (R)) ./ ((NIR) + (R));
+
+% Rescale the pansharpened images
+NIR_P = rescale(pansharpened_components(:,:,4));
+R_P = rescale(pansharpened_components(:,:,3));
+G_P = rescale(pansharpened_components(:,:,2));
+B_P = rescale(pansharpened_components(:,:,1));
+
+% Calculate the NDVI for the pansharpened image
+NDVI_P =  rescale(-1 * (((NIR_P - R_P) ./ (NIR_P + R_P)) - 1));
+
+% Rescale the images and convert them to grayscale
+original_image = im2gray(uint8(rescale(cat(3, R, G, B), 0, 255)));
+pca_pansharpened_image = im2gray(uint8(rescale(cat(3, R_P, G_P, B_P), 0, 255)));
+
+% -------------------------------------------------------------------------
+
+% Calculate the denominator for the brovey method
+multispectral_bands = multispectral_images{1,1};
+denominator = multispectral_bands(:,:,1) + multispectral_bands(:,:,2) + multispectral_bands(:,:,3) + multispectral_bands(:,:,4);
+
+% Calculate the bands for the brovey method
+fused_band1 = (multispectral_bands(:,:,1).*panchromatic_image)./denominator;
+fused_band2 = (multispectral_bands(:,:,2).*panchromatic_image)./denominator;
+fused_band3 = (multispectral_bands(:,:,3).*panchromatic_image)./denominator;
+fused_band4 = (multispectral_bands(:,:,4).*panchromatic_image)./denominator;
+
+% Rescale the image and convert it to grayscale
+fused_image = im2gray(uint8(rescale(cat(3, fused_band1, fused_band2, fused_band3), 0, 255)));
+
+% Calculate the NDVI for the brovey image
+brovey_NDVI = ((fused_band4) - (fused_band3)) ./ ((fused_band4) + (fused_band3));
+
+% -------------------------------------------------------------------------
+
+% Create pansharpened, brovey, and original images
+pansharpened_image = cat(3, R_P, G_P, B_P);
+brovey_image = cat(3, fused_band1, fused_band2, fused_band3);
+starting_image = cat(3, R, G, B);
+
+% Create pansharpened, brovey, and original images with all four bands
+pansharpened_image_full = cat(3, R_P, G_P, B_P, NIR_P);
+brovey_image_full = cat(3, fused_band1, fused_band2, fused_band3, fused_band4);
+starting_image_full = cat(3, R, G, B, NIR);
+
+% Calculate the Euclidian distance for the PCA image
+for i=1:4  
+    pca_euclidian_distance(i) = sqrt(sum((imhist(starting_image_full(:,:,i)) - imhist(pansharpened_image_full(:,:,i))).^2));
 end
 
-% Determine the layout based on the number of images
-layout_rows = ceil(sqrt(numSlices));
-layout_columns = ceil(numSlices / layout_rows);
+% Calculate the Euclidian distance for the Brovey image
+for i=1:4  
+    bro_euclidian_distance(i) = sqrt(sum((imhist(starting_image_full(:,:,i)) - imhist(brovey_image_full(:,:,i))).^2));
+end
 
-% Display all images simultaneously
+PCA_SAM_Matrix = [];
+Brovey_SAM_Matrix = [];
+
+% Calculate the spectral angle matrix for the PCA Image
+for i=1:length(starting_image(:,:,:))
+    for j=1:length(starting_image(:,:,:))
+        starting_slice = reshape(starting_image(i,j,:), 3, 1);
+        pansharpened_slice = reshape(pansharpened_image(i,j,:), 3, 1);
+        pan_cos_insert = (pansharpened_slice' * starting_slice) / (norm(pansharpened_slice) * norm(starting_slice));
+        PCA_SAM_Matrix(i, j) = acosd(pan_cos_insert);
+    end
+end
+
+% Calculate the spectral angle matrix for the Brovey Image
+for i=1:length(starting_image(:,:,:))
+    for j=1:length(starting_image(:,:,:))
+        starting_slice = reshape(starting_image(i,j,:), 3, 1);
+        brovey_slice = reshape(brovey_image(i,j,:), 3, 1);
+        bro_cos_insert = (brovey_slice' * starting_slice) / (norm(brovey_slice) * norm(starting_slice));
+        Brovey_SAM_Matrix(i, j) = acosd(bro_cos_insert);
+    end
+end
+
+% Reshape the euclidian distance matrices
+pca_euclidian_distance_reshaped = [pca_euclidian_distance(1), pca_euclidian_distance(2), pca_euclidian_distance(3), pca_euclidian_distance(4)]';
+bro_euclidian_distance_reshaped = [bro_euclidian_distance(1), bro_euclidian_distance(2), bro_euclidian_distance(3), bro_euclidian_distance(4)]';
+
+% Calculate the average of the spectral angle matrices
+PCA_SAM_Matrix_mean = mean(mean(PCA_SAM_Matrix));
+Brovey_SAM_Matrix_mean = mean(mean(Brovey_SAM_Matrix));
+
+% Create the images labels
+images = {"Red"; "Green"; "Blue"; "NIR"};
+
+% Create the tables for the spectral angle averages
+spatial_table = table(images, pca_euclidian_distance_reshaped, bro_euclidian_distance_reshaped);
+spectral_table = table(PCA_SAM_Matrix_mean, Brovey_SAM_Matrix_mean);
+
+% -------------------------------------------------------------------------
+
 figure;
+subplot(2, 4, 1);
+imshow(cat(3, R, zeros(m, n), zeros(m, n)));
+title(['Red']);
+subplot(2, 4, 2);
+imshow(cat(3, zeros(m, n), G, zeros(m, n)));
+title(['Green']);
+subplot(2, 4, 3);
+imshow(cat(3, zeros(m, n), zeros(m, n), B));
+title(['Blue']);
+subplot(2, 4, 4);
+imshow(cat(3, NIR, NIR, NIR));
+title(['NIR']);
+subplot(2, 4, 5);
+imshow(cat(3, R_P, zeros(m, n), zeros(m, n)));
+title(['Red']);
+subplot(2, 4, 6);
+imshow(cat(3, zeros(m, n), G_P, zeros(m, n)));
+title(['Green']);
+subplot(2, 4, 7);
+imshow(cat(3, zeros(m, n), zeros(m, n), B_P));
+title(['Blue']);
+subplot(2, 4, 8);
+imshow(cat(3, NIR_P, NIR_P, NIR_P));
+title(['NIR']);
 
-for slice = 1 : numSlices
-    subplot(layout_rows, layout_columns, slice);
-    imshow(image_list{slice}, []);
-    title(['Image ' num2str(slice)]);
-    disp(['Displaying Image ' num2str(slice)]); % Add this line for debugging
-end
+figure;
+subplot(1, 4, 1);
+imshow(original_image, []);
+title(['Multispectral Color Image']);
+subplot(1, 4, 2);
+imshow(panchromatic_image, []);
+title(['Panchromatic Image']);
+subplot(1, 4, 3);
+imshow(pca_pansharpened_image, []);
+title(['PCA Pansharpened Image']);
+subplot(1, 4, 4);
+imshow(fused_image);
+title(['Brovey Method Pansharpened Image']);
+
+figure;
+subplot(1, 3, 1);
+imshow(NDVI);
+title(['NDVI Before Pansharpening'])
+subplot(1, 3, 2);
+imshow(NDVI_P, []);
+title(['NDVI After Pansharpening']);
+subplot(1, 3, 3);
+imshow(brovey_NDVI);
+title(['Brovey Method NDVI Image'])
+
+figure;
+subplot(1, 2, 1);
+imshow(PCA_SAM_Matrix, []);
+title(["PCA Spectral Similarity"]);
+subplot(1, 2, 2);
+imshow(Brovey_SAM_Matrix, []);
+title(["Brovey Spectral Similarity"]);
+
+uitable(uifigure, 'Data', spatial_table, 'ColumnName', {'Image Slice', 'PCA Euclidian Distance', 'Brovey Euclidian Distance'}, "Position",[20 20 450 117]);
+uitable(uifigure, 'Data', spectral_table, 'ColumnName', {'Image Slice', 'PCA Average Spectral Angle', 'Brovey Average Spectral Angle'}, "Position",[20 20 350 51]);
