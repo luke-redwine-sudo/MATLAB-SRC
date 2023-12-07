@@ -5,13 +5,12 @@ clear all
 load pan_IKONOS.mat;
 
 pan_IKONOS = struct2cell(load("pan_IKONOS.mat"));
-
-% Combine the multispectral and panchromatic data
 ms_data = struct2cell(load("ms_IKONOS.mat"));
 
 panchromatic_image = pan_IKONOS{1, 1};
 
-% Resize multispectral images to match panchromatic image size
+% Retieve the size statistics of the images and retrieve the multspectral
+% data
 [m, n] = size(panchromatic_image);
 multispectral_images = cellfun(@(x) imresize(x, [m, n]), ms_data, 'UniformOutput', false);
 
@@ -43,7 +42,7 @@ top_pcs_multispectral = eigenvectors_multispectral(:, 1:num_components);
 
 % Replace the top component of the multispectral image to be put through
 % inverse PCA
-reshaped_multispectral(:, 4) = reshape(panchromatic_image, m*n, 1);
+reshaped_multispectral(:, 1) = reshape(panchromatic_image, m*n, 1);
 
 % Pansharpening using the top principal components
 pansharpened_components = reshape(reshaped_multispectral * top_pcs_multispectral, m, n, num_components) + mean_multispectral;
@@ -64,7 +63,7 @@ G_P = rescale(pansharpened_components(:,:,2));
 B_P = rescale(pansharpened_components(:,:,1));
 
 % Calculate the NDVI for the pansharpened image
-NDVI_P =  rescale(-1 * (((NIR_P - R_P) ./ (NIR_P + R_P)) - 1));
+NDVI_P =  (((NIR_P - R_P) ./ (NIR_P + R_P)));
 
 % Rescale the images and convert them to grayscale
 original_image = im2gray(uint8(rescale(cat(3, R, G, B), 0, 255)));
@@ -153,33 +152,33 @@ spectral_table = table(PCA_SAM_Matrix_mean, Brovey_SAM_Matrix_mean);
 figure;
 subplot(2, 4, 1);
 imshow(cat(3, R, zeros(m, n), zeros(m, n)));
-title(['Red']);
+title(['Original Red']);
 subplot(2, 4, 2);
 imshow(cat(3, zeros(m, n), G, zeros(m, n)));
-title(['Green']);
+title(['Original Green']);
 subplot(2, 4, 3);
 imshow(cat(3, zeros(m, n), zeros(m, n), B));
-title(['Blue']);
+title(['Original Blue']);
 subplot(2, 4, 4);
 imshow(cat(3, NIR, NIR, NIR));
-title(['NIR']);
+title(['Original NIR']);
 subplot(2, 4, 5);
 imshow(cat(3, R_P, zeros(m, n), zeros(m, n)));
-title(['Red']);
+title(['PCA Red']);
 subplot(2, 4, 6);
 imshow(cat(3, zeros(m, n), G_P, zeros(m, n)));
-title(['Green']);
+title(['PCA Green']);
 subplot(2, 4, 7);
 imshow(cat(3, zeros(m, n), zeros(m, n), B_P));
-title(['Blue']);
+title(['PCA Blue']);
 subplot(2, 4, 8);
-imshow(cat(3, NIR_P, NIR_P, NIR_P));
-title(['NIR']);
+imshow(cat(3, NIR_P, NIR_P, NIR_P), []);
+title(['PCA NIR']);
 
 figure;
 subplot(1, 4, 1);
 imshow(original_image, []);
-title(['Multispectral Color Image']);
+title(['Multispectral Image']);
 subplot(1, 4, 2);
 imshow(panchromatic_image, []);
 title(['Panchromatic Image']);
@@ -193,21 +192,23 @@ title(['Brovey Method Pansharpened Image']);
 figure;
 subplot(1, 3, 1);
 imshow(NDVI);
-title(['NDVI Before Pansharpening'])
+title(['Mulitspectral NDVI'])
 subplot(1, 3, 2);
 imshow(NDVI_P, []);
-title(['NDVI After Pansharpening']);
+title(['PCA Pansharpening NDVI']);
 subplot(1, 3, 3);
 imshow(brovey_NDVI);
-title(['Brovey Method NDVI Image'])
+title(['Brovey Pansharpening NDVI'])
 
 figure;
 subplot(1, 2, 1);
 imshow(PCA_SAM_Matrix, []);
 title(["PCA Spectral Similarity"]);
+subtitle(num2str(PCA_SAM_Matrix_mean));
 subplot(1, 2, 2);
 imshow(Brovey_SAM_Matrix, []);
 title(["Brovey Spectral Similarity"]);
+subtitle(num2str(Brovey_SAM_Matrix_mean));
 
 uitable(uifigure, 'Data', spatial_table, 'ColumnName', {'Image Slice', 'PCA Euclidian Distance', 'Brovey Euclidian Distance'}, "Position",[20 20 450 117]);
-uitable(uifigure, 'Data', spectral_table, 'ColumnName', {'Image Slice', 'PCA Average Spectral Angle', 'Brovey Average Spectral Angle'}, "Position",[20 20 350 51]);
+uitable(uifigure, 'Data', spectral_table, 'ColumnName', {'PCA Average Spectral Angle', 'Brovey Average Spectral Angle'}, "Position",[20 20 400 51]);
